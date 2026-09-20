@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Local secrets / config
+.env
+.env.*
+!.env.example
+
+# Validation ledger data (local, not source)
+*.sqlite
+*.sqlite-*
+*.db
+spike/cron.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
