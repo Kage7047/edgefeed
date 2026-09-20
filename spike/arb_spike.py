@@ -228,30 +228,70 @@ def fetch_poly_markets(limit: int, max_pages: int = 12) -> list[PMarket]:
         if not isinstance(data, list) or not data:
             break
         for m in data:
-            outcomes = _maybe_json(m.get("outcomes"))
-            if not outcomes or len(outcomes) != 2:
-                continue  # binary Yes/No only for the spike
-            prices = _maybe_json(m.get("outcomePrices")) or []
-            tokens = _maybe_json(m.get("clobTokenIds")) or []
-            yes_i = _yes_index(outcomes)
-            no_i = 1 - yes_i if yes_i is not None else None
-            if yes_i is None:
-                continue
-            yes_price = _to_cents(prices[yes_i]) if yes_i < len(prices) else 0.0
-            no_price = _to_cents(prices[no_i]) if no_i is not None and no_i < len(prices) else 0.0
-            out.append(PMarket(
-                market_id=str(m.get("id") or m.get("conditionId") or ""),
-                question=m.get("question") or m.get("title") or "",
-                yes_token=str(tokens[yes_i]) if yes_i < len(tokens) else None,
-                no_token=str(tokens[no_i]) if no_i is not None and no_i < len(tokens) else None,
-                yes_price=yes_price,
-                no_price=no_price,
-                volume=float(m.get("volume") or m.get("volumeNum") or 0),
-                liquidity=float(m.get("liquidity") or m.get("liquidityNum") or 0),
-                category=_poly_category(m),
-            ))
+            pm = _pmarket_from(m)
+            if pm:
+                out.append(pm)
         offset += page
     return out[:limit]
+
+
+def _pmarket_from(m: dict) -> PMarket | None:
+    """Build a PMarket from a Gamma market dict (binary Yes/No only)."""
+    outcomes = _maybe_json(m.get("outcomes"))
+    if not outcomes or len(outcomes) != 2:
+        return None
+    prices = _maybe_json(m.get("outcomePrices")) or []
+    tokens = _maybe_json(m.get("clobTokenIds")) or []
+    yes_i = _yes_index(outcomes)
+    if yes_i is None:
+        return None
+    no_i = 1 - yes_i
+    return PMarket(
+        market_id=str(m.get("id") or m.get("conditionId") or ""),
+        question=m.get("question") or m.get("title") or "",
+        yes_token=str(tokens[yes_i]) if yes_i < len(tokens) else None,
+        no_token=str(tokens[no_i]) if no_i < len(tokens) else None,
+        yes_price=_to_cents(prices[yes_i]) if yes_i < len(prices) else 0.0,
+        no_price=_to_cents(prices[no_i]) if no_i < len(prices) else 0.0,
+        volume=float(m.get("volume") or m.get("volumeNum") or 0),
+        liquidity=float(m.get("liquidity") or m.get("liquidityNum") or 0),
+        category=_poly_category(m),
+    )
+
+
+def fetch_poly_market(market_id: str) -> PMarket | None:
+    """Fetch a single Gamma market by id (for curated pairs)."""
+    try:
+        d = http_get_json(f"{POLY_GAMMA}/markets/{urllib.parse.quote(str(market_id))}")
+    except RuntimeError:
+        return None
+    if isinstance(d, list):
+        d = d[0] if d else {}
+    return _pmarket_from(d) if isinstance(d, dict) else None
+
+
+def fetch_kalshi_market(ticker: str) -> KMarket | None:
+    """Fetch a single Kalshi market by ticker (for curated pairs)."""
+    try:
+        d = http_get_json(f"{KALSHI_BASE}/markets/{urllib.parse.quote(ticker)}")
+    except RuntimeError:
+        return None
+    m = d.get("market") or {}
+    if not m:
+        return None
+    yes_ask = float(m.get("yes_ask_dollars") or 0) * 100.0
+    yes_bid = float(m.get("yes_bid_dollars") or 0) * 100.0
+    no_ask = float(m.get("no_ask_dollars") or 0) * 100.0
+    title = f"{m.get('title') or ''} {m.get('yes_sub_title') or ''}".strip()
+    return KMarket(
+        ticker=m.get("ticker", ticker),
+        title=title or ticker,
+        yes_bid=yes_bid,
+        yes_ask=yes_ask,
+        no_ask=no_ask if 0 < no_ask < 100 else (100.0 - yes_bid),
+        volume=float(m.get("volume_fp") or 0),
+        liquidity=float(m.get("liquidity_dollars") or 0),
+    )
 
 
 def _maybe_json(v):
@@ -337,24 +377,33 @@ def auto_match(kms: list[KMarket], pms: list[PMarket], threshold: float):
     return pairs
 
 
-def curated_match(kms, pms, path: str):
-    """Load verified pairs: [{kalshi: ticker, polymarket: id, category?}]."""
+def curated_pairs(path: str):
+    """Load verified pairs and fetch each market DIRECTLY by id/ticker (fast, robust).
+    Spec rows: {kalshi: ticker, polymarket: id, category?, relation?, notes?}."""
     with open(path, "r", encoding="utf-8") as f:
         spec = json.load(f)
-    kidx = {k.ticker: k for k in kms}
-    pidx = {p.market_id: p for p in pms}
+    rows = [r for r in spec if "kalshi" in r and "polymarket" in r]
+
+    kmarkets: dict[int, KMarket | None] = {}
+    pmarkets: dict[int, PMarket | None] = {}
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        kf = {ex.submit(fetch_kalshi_market, r["kalshi"]): i for i, r in enumerate(rows)}
+        pf = {ex.submit(fetch_poly_market, str(r["polymarket"])): i for i, r in enumerate(rows)}
+        for fut in as_completed(list(kf)):
+            kmarkets[kf[fut]] = fut.result()
+        for fut in as_completed(list(pf)):
+            pmarkets[pf[fut]] = fut.result()
+
     pairs = []
-    for row in spec:
-        if "kalshi" not in row or "polymarket" not in row:
-            continue  # comment / metadata row
-        k = kidx.get(row.get("kalshi"))
-        p = pidx.get(str(row.get("polymarket")))
-        if k and p:
-            if row.get("category"):
-                p.category = row["category"]
-            pairs.append((k, p, 1.0))
-        else:
-            print(f"  [curated] SKIP unresolved pair: {row}", file=sys.stderr)
+    for i, r in enumerate(rows):
+        k, p = kmarkets.get(i), pmarkets.get(i)
+        if not (k and p):
+            print(f"  [curated] SKIP unresolved: kalshi={r['kalshi']} poly={r['polymarket']}"
+                  f" (k={'ok' if k else 'MISSING'} p={'ok' if p else 'MISSING'})", file=sys.stderr)
+            continue
+        if r.get("category"):
+            p.category = r["category"]
+        pairs.append((k, p, 1.0))
     return pairs
 
 
@@ -512,29 +561,30 @@ def main():
     args = ap.parse_args()
 
     t0 = time.time()
-    print(f"[1/4] Fetching Kalshi markets (limit {args.kalshi_limit}) ...", file=sys.stderr)
-    kms = fetch_kalshi_markets(args.kalshi_limit)
-    print(f"      got {len(kms)} open Kalshi markets", file=sys.stderr)
-
-    print(f"[2/4] Fetching Polymarket markets (limit {args.poly_limit}) ...", file=sys.stderr)
-    pms = fetch_poly_markets(args.poly_limit)
-    print(f"      got {len(pms)} binary Polymarket markets", file=sys.stderr)
-
     if args.pairs:
-        print(f"[3/4] Matching via curated file {args.pairs} ...", file=sys.stderr)
-        pairs = curated_match(kms, pms, args.pairs)
+        # Curated mode: fetch each pair directly by id/ticker. No bulk scan needed.
+        print(f"[1/2] Resolving curated pairs from {args.pairs} ...", file=sys.stderr)
+        pairs = curated_pairs(args.pairs)
         source = "curated"
+        kms_n = pms_n = len(pairs)
     else:
-        print(f"[3/4] Auto-matching titles (threshold {args.match_threshold}) ...", file=sys.stderr)
+        print(f"[1/3] Fetching Kalshi markets (limit {args.kalshi_limit}) ...", file=sys.stderr)
+        kms = fetch_kalshi_markets(args.kalshi_limit)
+        print(f"      got {len(kms)} liquid Kalshi markets", file=sys.stderr)
+        print(f"[2/3] Fetching Polymarket markets (limit {args.poly_limit}) ...", file=sys.stderr)
+        pms = fetch_poly_markets(args.poly_limit)
+        print(f"      got {len(pms)} binary Polymarket markets", file=sys.stderr)
+        print(f"      auto-matching titles (threshold {args.match_threshold}) ...", file=sys.stderr)
         pairs = auto_match(kms, pms, args.match_threshold)
         source = "auto"
+        kms_n, pms_n = len(kms), len(pms)
     print(f"      {len(pairs)} candidate pairs", file=sys.stderr)
 
-    print(f"[4/4] Fetching order books + computing edges ...", file=sys.stderr)
+    print(f"[last] Fetching order books + computing edges ...", file=sys.stderr)
     edges = compute_edges(pairs, source, args.poly_fee_cents)
 
     if args.log_db:
-        log_run(args.log_db, edges, args.min_net, source, len(kms), len(pms))
+        log_run(args.log_db, edges, args.min_net, source, kms_n, pms_n)
     if not args.quiet:
         print_report(edges, args.min_net, args.top)
     print(f"(done in {time.time() - t0:.1f}s; {len(edges)} pairs priced)", file=sys.stderr)

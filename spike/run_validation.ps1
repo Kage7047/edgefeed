@@ -10,7 +10,7 @@
 $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")   # repo root
 $py    = if ($env:PYTHON) { $env:PYTHON } else { "python" }
-$pairs = if ($env:PAIRS)  { $env:PAIRS }  else { "spike\curated_pairs.example.json" }
+$pairs = if ($env:PAIRS)  { $env:PAIRS }  else { "spike\curated_pairs.json" }
 $db    = if ($env:DB)     { $env:DB }     else { "spike\ledger.sqlite" }
 
 & $py spike\arb_spike.py `
