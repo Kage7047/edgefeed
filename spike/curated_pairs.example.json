@@ -1,0 +1,20 @@
+[
+  {
+    "_comment": "Hand-verified cross-venue pairs. Trustworthy mode: python arb_spike.py --pairs curated_pairs.example.json",
+    "_how_to_fill": "kalshi = market ticker (from /events?with_nested_markets=true). polymarket = Gamma market id (numeric). category sets the Polymarket fee cap (geopolitics/world=0c, politics/finance/tech=1c, sports/econ/culture/weather=1.25c, crypto=1.75c). relation: same|inverse. VERIFY both markets resolve on the SAME event + SAME date/source before adding."
+  },
+  {
+    "kalshi": "KXNEXTISRAELPM-45JAN01-YCOH",
+    "polymarket": "682711",
+    "relation": "same",
+    "category": "politics",
+    "notes": "Yossi Cohen as next Israeli PM. Found by auto-match; low liquidity -- example only."
+  },
+  {
+    "kalshi": "KXNEXTROMANIAPM-45JAN01-ETOM",
+    "polymarket": "2166699",
+    "relation": "same",
+    "category": "politics",
+    "notes": "Eugen Tomac as next Romania PM. Found by auto-match; verify resolution criteria."
+  }
+]
