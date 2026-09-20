@@ -8,7 +8,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."   # repo root
 PYTHON="${PYTHON:-python3}"
-PAIRS="${PAIRS:-spike/curated_pairs.example.json}"
+PAIRS="${PAIRS:-spike/curated_pairs.json}"
 DB="${DB:-spike/ledger.sqlite}"
 
 "$PYTHON" spike/arb_spike.py \

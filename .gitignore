@@ -21,3 +21,6 @@ spike/cron.log
 Thumbs.db
 .idea/
 .vscode/
+
+# discovery output (regenerable)
+spike/candidates.json

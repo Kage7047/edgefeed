@@ -1,0 +1,28 @@
+[
+  { "_comment": "Hand-verified Kalshi<>Polymarket pairs, built 2026-09-20 from discover_pairs.py output + manual review. All relation=same (YES==YES). Rejected traps: Trump Jr 'win' vs Trump 'endorse'; Brazil 'win' vs 'advance'; Greenland 'acquire' vs 'buy part' (resolution wording differs). Re-verify resolution criteria before trusting for real money." },
+
+  { "kalshi": "KXPRESNOMD-28-BS",   "polymarket": "559679", "relation": "same", "category": "politics", "notes": "Bernie Sanders wins 2028 Democratic nomination" },
+  { "kalshi": "KXPRESNOMD-28-ZMAM", "polymarket": "559671", "relation": "same", "category": "politics", "notes": "Zohran Mamdani wins 2028 Democratic nomination" },
+  { "kalshi": "KXPRESNOMD-28-AOC",  "polymarket": "559653", "relation": "same", "category": "politics", "notes": "AOC wins 2028 Democratic nomination" },
+  { "kalshi": "KXPRESNOMD-28-SAS",  "polymarket": "559657", "relation": "same", "category": "politics", "notes": "Stephen A. Smith wins 2028 Democratic nomination" },
+  { "kalshi": "KXPRESNOMD-28-JBP",  "polymarket": "559663", "relation": "same", "category": "politics", "notes": "J.B. Pritzker wins 2028 Democratic nomination" },
+  { "kalshi": "KXPRESNOMD-28-CMUR", "polymarket": "559691", "relation": "same", "category": "politics", "notes": "Chris Murphy wins 2028 Democratic nomination" },
+  { "kalshi": "KXPRESNOMD-28-JF",   "polymarket": "559673", "relation": "same", "category": "politics", "notes": "John Fetterman wins 2028 Democratic nomination" },
+  { "kalshi": "KXPRESNOMD-28-RW",   "polymarket": "559664", "relation": "same", "category": "politics", "notes": "Raphael Warnock wins 2028 Democratic nomination" },
+  { "kalshi": "KXPRESNOMD-28-MO",   "polymarket": "559667", "relation": "same", "category": "politics", "notes": "Michelle Obama wins 2028 Democratic nomination" },
+  { "kalshi": "KXPRESNOMD-28-JCRO", "polymarket": "559692", "relation": "same", "category": "politics", "notes": "Jasmine Crockett wins 2028 Democratic nomination" },
+
+  { "kalshi": "KXPRESNOMR-28-TCAR", "polymarket": "561996", "relation": "same", "category": "politics", "notes": "Tucker Carlson wins 2028 Republican nomination" },
+  { "kalshi": "KXPRESNOMR-28-BD",   "polymarket": "561986", "relation": "same", "category": "politics", "notes": "Byron Donalds wins 2028 Republican nomination" },
+  { "kalshi": "KXPRESNOMR-28-RFK",  "polymarket": "561984", "relation": "same", "category": "politics", "notes": "RFK Jr wins 2028 Republican nomination" },
+  { "kalshi": "KXPRESNOMR-28-ES",   "polymarket": "561987", "relation": "same", "category": "politics", "notes": "Elise Stefanik wins 2028 Republican nomination" },
+  { "kalshi": "KXPRESNOMR-28-TG",   "polymarket": "561976", "relation": "same", "category": "politics", "notes": "Tulsi Gabbard wins 2028 Republican nomination" },
+  { "kalshi": "KXPRESNOMR-28-VR",   "polymarket": "561981", "relation": "same", "category": "politics", "notes": "Vivek Ramaswamy wins 2028 Republican nomination" },
+  { "kalshi": "KXPRESNOMR-28-SHS",  "polymarket": "561982", "relation": "same", "category": "politics", "notes": "Sarah Huckabee Sanders wins 2028 Republican nomination" },
+
+  { "kalshi": "KXPRESPERSON-28-TWAL", "polymarket": "561247", "relation": "same", "category": "politics", "notes": "Tim Walz wins 2028 US Presidential Election (winner, not nomination)" },
+
+  { "kalshi": "KXNEXTISRAELPM-45JAN01-YCOH", "polymarket": "682711", "relation": "same", "category": "politics", "notes": "Yossi Cohen next Israeli PM" },
+  { "kalshi": "KXNEXTISRAELPM-45JAN01-IBEN", "polymarket": "682713", "relation": "same", "category": "politics", "notes": "Itamar Ben-Gvir next Israeli PM" },
+  { "kalshi": "KXNEXTROMANIAPM-45JAN01-ETOM", "polymarket": "2166699", "relation": "same", "category": "politics", "notes": "Eugen Tomac next Romania PM (lower liquidity)" }
+]

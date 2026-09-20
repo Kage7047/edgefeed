@@ -1,0 +1,39 @@
+# Verified fee schedules (as of 2026-09; VERIFY before trusting for real money).
+# The spike (spike/arb_spike.py) currently encodes these in code; this file is the
+# canonical reference for the Phase-0+ core to load.
+
+kalshi:
+  # Taker fee per contract = ceil_to_cent(coeff * C * (1 - C)), C = price in dollars (0..1).
+  # Peaks ~1.75-2c near C=0.50; smaller at the extremes. Maker = 25% of taker.
+  model: "ceil_cent(coeff * C * (1-C))"
+  coeff: 0.07
+  maker_multiplier: 0.25
+  source: "https://marketmath.io/platforms/kalshi (2026)"
+
+polymarket:
+  # V2 taker fees (effective 2026-03-30), per-share CAPS by category (cents).
+  # Maker orders = 0 fee (funded by taker fees / maker rebates).
+  # geopolitics & world = FEE-FREE -> best cross-venue arb candidates.
+  model: "per_share_cap_by_category"
+  maker_fee_cents: 0.0
+  category_cap_cents:
+    geopolitics: 0.0
+    world: 0.0
+    politics: 1.0
+    finance: 1.0
+    tech: 1.0
+    mentions: 1.0
+    sports: 1.25
+    economics: 1.25
+    culture: 1.25
+    weather: 1.25
+    other: 1.25
+    crypto: 1.75
+  default_category: politics
+  source: "https://docs.polymarket.us/fees (Fee Structure V2, 2026)"
+
+# Net-spread threshold guidance (per-category, NOT a single global constant):
+#   min_net_cents >= combined fee to clear + a safety margin.
+#   geopolitics/world:  ~2c   (only Kalshi leg pays)
+#   politics/finance:   ~3c
+#   crypto:             ~4c
