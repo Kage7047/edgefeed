@@ -42,6 +42,17 @@ def main():
         print(f" HIT RATE      : {100*hits/graded:.1f}%   (hit {hits} / partial {partial} / miss {miss})")
         print(f" avg convergence: {(avg_conv or 0):.0%} of the gap closed by followup")
 
+    if graded:
+        print("\n-- hit-rate by leader venue " + "-" * 50)
+        print(" (research: Kalshi tends to LEAD, Polymarket to LAG -> kalshi-leader should convert better)")
+        for lead in ("kalshi", "polymarket"):
+            g = con.execute("SELECT COUNT(*) n FROM news_signals WHERE outcome IS NOT NULL AND leader=?",
+                            (lead,)).fetchone()["n"]
+            h = con.execute("SELECT COUNT(*) n FROM news_signals WHERE outcome='hit' AND leader=?",
+                            (lead,)).fetchone()["n"]
+            if g:
+                print(f"   leader={lead:<11} graded {g:>3}  hit {h:>3}  ({100*h/g:.0f}%)")
+
     print("\n-- recent signals " + "-" * 60)
     rows = con.execute(
         "SELECT ts,pair_key,leader,laggard,leader_move,gap,outcome,convergence_frac,headline"

@@ -47,14 +47,16 @@ import arb_spike as A  # noqa: E402
 # --------------------------------------------------------------------------- #
 DEFAULTS = dict(
     poll=15,               # seconds between polls
-    window=180,            # rolling lookback for "a move"
-    move_threshold=3.0,    # leader must move at least this many cents over the window
-    lag_max=1.5,           # laggard must have moved LESS than this (still stale)
-    gap_min=3.0,           # current mid disagreement required to fire
-    cooldown=300,          # per-pair seconds before re-firing
+    window=240,            # rolling lookback for "a move" (longer catches more moves)
+    move_threshold=2.0,    # leader must move at least this many cents over the window
+    lag_max=1.0,           # laggard must have moved LESS than this (still stale)
+    gap_min=2.0,           # current mid disagreement required to fire
+    cooldown=180,          # per-pair seconds before re-firing
     followup=600,          # seconds after firing to grade convergence
-    hit_frac=0.5,          # laggard must close >= this fraction of the gap to count as a hit
+    hit_frac=0.4,          # laggard must close >= this fraction of the gap to count as a hit
 )
+# NOTE: keep move_threshold > lag_max so "one venue moved, the other didn't" holds
+# and a joint (real, non-latency) move does not fire. Loosened 2026-09 to learn faster.
 
 
 @dataclass
