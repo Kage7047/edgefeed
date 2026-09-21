@@ -27,6 +27,11 @@ _HINTS = {
     "KXPRESPERSON": "2028 US presidential election",
     "KXNEXTISRAELPM": "Israel prime minister",
     "KXNEXTROMANIAPM": "Romania prime minister",
+    "KXBTCMAXY": "Bitcoin price",
+    "KXBTCD": "Bitcoin price",
+    "KXBTC": "Bitcoin price",
+    "KXETHD": "Ethereum price",
+    "KXETH": "Ethereum price",
 }
 
 
