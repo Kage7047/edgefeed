@@ -1,0 +1,8 @@
+[
+  { "_comment": "Volatile crypto pairs for news-latency testing, built 2026-09-21. Kalshi KXBTCMAXY 'how high will BTC get in 2026 (max above $X)' <> Polymarket 'will Bitcoin reach $X by Dec 31 2026'. Same strike, same year-end horizon, same touch/max>=strike semantics. These track BTC spot -> move far more than long-dated politics. Caveat: verify both resolve on 2026 calendar max; deep-OTM strikes ($150k) have thin Polymarket books." },
+
+  { "kalshi": "KXBTCMAXY-26DEC31-99999.99",  "polymarket": "701496", "relation": "same", "category": "crypto", "notes": "BTC reach $100k by 2026 (near-the-money, most sensitive; K~30c PM~28c)" },
+  { "kalshi": "KXBTCMAXY-26DEC31-129999.99", "polymarket": "701493", "relation": "same", "category": "crypto", "notes": "BTC reach $130k by 2026 (K~7c PM~5c)" },
+  { "kalshi": "KXBTCMAXY-26DEC31-139999.99", "polymarket": "701492", "relation": "same", "category": "crypto", "notes": "BTC reach $140k by 2026 (K~4c PM~4c)" },
+  { "kalshi": "KXBTCMAXY-26DEC31-149999.99", "polymarket": "701491", "relation": "same", "category": "crypto", "notes": "BTC reach $150k by 2026 (K~4c PM~3c; thin PM book)" }
+]
