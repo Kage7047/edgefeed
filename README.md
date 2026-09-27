@@ -1,5 +1,7 @@
 # EdgeFeed
 
+[![ci](https://github.com/Kage7047/edgefeed/actions/workflows/ci.yml/badge.svg)](https://github.com/Kage7047/edgefeed/actions/workflows/ci.yml)
+
 Detection & alerts for prediction markets — cross-venue **arbitrage** and (later)
 **news-latency** signals across Kalshi and Polymarket.
 
