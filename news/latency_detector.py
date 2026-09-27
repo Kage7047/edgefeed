@@ -261,14 +261,11 @@ def build_pairs(path: str) -> dict[str, Pair]:
 
 def poll_once(pairs: dict[str, Pair]):
     now = time.time()
-    tasks = []
     with ThreadPoolExecutor(max_workers=12) as ex:
         futs = {}
         for p in pairs.values():
             futs[ex.submit(fetch_kalshi_mid, p.k_ticker)] = (p, "k")
             futs[ex.submit(fetch_poly_mid, p.p_yes_token)] = (p, "p")
-        for fut in futs:
-            pass
         for fut, (p, which) in futs.items():
             try:
                 mid = fut.result()
