@@ -1,0 +1,72 @@
+# docker compose up -d                          collector + API/dashboard on :8090, Postgres ledger
+# docker compose --profile monitoring up -d     + Prometheus :9090 and Grafana :3000 (anonymous viewer)
+x-app: &app
+  build: .
+  image: ghcr.io/kage7047/edgefeed:local
+  restart: unless-stopped
+  environment:
+    EDGEFEED_DB_URL: postgresql+psycopg://edgefeed:edgefeed@db:5432/edgefeed
+    EDGEFEED_INTERVAL: ${EDGEFEED_INTERVAL:-15}
+    EDGEFEED_SPORTS: ${EDGEFEED_SPORTS:-nba,nhl,nfl,mlb,ncaab,epl,laliga,seriea,ucl}
+    EDGEFEED_TELEGRAM_BOT_TOKEN: ${EDGEFEED_TELEGRAM_BOT_TOKEN:-}
+    EDGEFEED_TELEGRAM_CHAT_ID: ${EDGEFEED_TELEGRAM_CHAT_ID:-}
+  volumes:
+    - ./config:/app/config:ro
+  depends_on:
+    db:
+      condition: service_healthy
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: edgefeed
+      POSTGRES_PASSWORD: edgefeed
+      POSTGRES_DB: edgefeed
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U edgefeed"]
+      interval: 5s
+      retries: 20
+
+  collector:
+    <<: *app
+    command: ["collect"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9108/metrics', timeout=4)"]
+      interval: 30s
+
+  api:
+    <<: *app
+    command: ["serve", "--host", "0.0.0.0", "--port", "8090"]
+    ports:
+      - "127.0.0.1:8090:8090"
+
+  prometheus:
+    profiles: [monitoring]
+    image: prom/prometheus:v3.5.0
+    restart: unless-stopped
+    volumes:
+      - ./ops/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./ops/alerts.yml:/etc/prometheus/alerts.yml:ro
+    ports:
+      - "127.0.0.1:9090:9090"
+
+  grafana:
+    profiles: [monitoring]
+    image: grafana/grafana:12.1.0
+    restart: unless-stopped
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/edgefeed.json
+    volumes:
+      - ./ops/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./ops/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "127.0.0.1:3000:3000"
+
+volumes:
+  pgdata:

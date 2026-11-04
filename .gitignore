@@ -4,23 +4,30 @@ __pycache__/
 .venv/
 venv/
 env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+coverage.xml
+
+# Node
+web/node_modules/
 
 # Local secrets / config
 .env
 .env.*
 !.env.example
 
-# Validation ledger data (local, not source)
+# Ledger data (local, not source)
 *.sqlite
 *.sqlite-*
 *.db
-spike/cron.log
+research/spike/cron.log
+research/spike/candidates.json
 
 # OS / editor
 .DS_Store
 Thumbs.db
 .idea/
 .vscode/
-
-# discovery output (regenerable)
-spike/candidates.json
