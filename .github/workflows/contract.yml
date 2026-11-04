@@ -1,0 +1,21 @@
+# Venue APIs drift (Kalshi renamed every price field to *_dollars in 2025-26). This runs the
+# live contract tests daily against the real public APIs so a rename fails here, not silently
+# in the collector.
+name: api-contract
+
+on:
+  schedule:
+    - cron: "23 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv venv && uv pip install -e ".[dev]"
+      - run: .venv/bin/pytest -q -m live -rs

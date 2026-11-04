@@ -1,0 +1,21 @@
+groups:
+  - name: edgefeed
+    rules:
+      - alert: CollectorStalled
+        expr: time() - edgefeed_last_scan_timestamp > 300
+        for: 2m
+        labels: { severity: page }
+        annotations:
+          summary: "No completed scan for 5 minutes"
+      - alert: VenueErrors
+        expr: sum by (venue) (rate(edgefeed_http_requests_total{status=~"5..|error|429"}[10m])) > 0.2
+        for: 10m
+        labels: { severity: warn }
+        annotations:
+          summary: "{{ $labels.venue }} is failing or rate-limiting requests"
+      - alert: PairsFailing
+        expr: edgefeed_pairs_failed > 0.2 * (edgefeed_pairs_priced + edgefeed_pairs_failed)
+        for: 15m
+        labels: { severity: warn }
+        annotations:
+          summary: "More than 20% of pairs cannot be priced (API drift or delisted markets)"
