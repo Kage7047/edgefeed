@@ -37,3 +37,16 @@ class Settings:
     telegram_chat: str = field(default_factory=lambda: _env("TELEGRAM_CHAT_ID", ""))
     metrics_port: int = field(default_factory=lambda: int(_env("METRICS_PORT", "9108")))  # 0 = off
     latency_alerts: bool = field(default_factory=lambda: _env("LATENCY_ALERTS", "0") == "1")
+    # games in play (or about to start) and pairs with an open edge are re-scanned this often
+    hot_interval: float = field(default_factory=lambda: float(_env("HOT_INTERVAL", "3")))
+    hot_before_minutes: float = field(default_factory=lambda: float(_env("HOT_BEFORE_MINUTES", "20")))
+    hot_after_hours: float = field(default_factory=lambda: float(_env("HOT_AFTER_HOURS", "4")))
+    # yield on locked money. Kalshi's interest on positions is for eligible US users only (off by
+    # default); Polymarket pays holding rewards on markets flagged holdingRewardsEnabled.
+    kalshi_apy: Decimal = field(default_factory=lambda: Decimal(_env("KALSHI_APY", "0")))
+    poly_holding_apy: Decimal = field(default_factory=lambda: Decimal(_env("POLY_HOLDING_APY", "0.04")))
+    # paper trading: re-fetch both books the moment an edge opens and "take" it at that size
+    paper: bool = field(default_factory=lambda: _env("PAPER", "1") == "1")
+    paper_contracts: Decimal = field(default_factory=lambda: Decimal(_env("PAPER_CONTRACTS", "200")))
+    paper_max_lock_days: Decimal = field(default_factory=lambda: Decimal(_env("PAPER_MAX_LOCK_DAYS", "14")))
+    settle_every: float = field(default_factory=lambda: float(_env("SETTLE_EVERY", "300")))

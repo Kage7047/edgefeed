@@ -64,6 +64,11 @@ def create_app(store: Store | None = None) -> FastAPI:
         with db().tx() as conn:
             return db().opportunities(conn, open_only=status == "open", limit=limit)
 
+    @app.get("/api/paper")
+    def paper(limit: int = Query(200, ge=1, le=5000)) -> list[dict[str, Any]]:
+        with db().tx() as conn:
+            return db().paper(conn, limit=limit)
+
     @app.get("/api/signals")
     def signals(limit: int = Query(100, ge=1, le=2000)) -> list[dict[str, Any]]:
         with db().tx() as conn:

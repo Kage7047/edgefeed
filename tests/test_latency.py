@@ -27,6 +27,28 @@ def test_cooldown():
 
 
 def test_grade():
-    assert grade(50, 40, 46, 0.4) == (0.6, "hit")
-    assert grade(50, 40, 41, 0.4) == (0.1, "partial")
-    assert grade(50, 40, 38, 0.4)[1] == "miss"
+    # leader at 50, laggard at 40
+    assert grade(50, 40, 50, 46, 0.4) == (0.6, "hit")  # laggard caught up
+    assert grade(50, 40, 50, 41, 0.4) == (0.1, "partial")
+    assert grade(50, 40, 50, 38, 0.4)[1] == "miss"
+    assert grade(50, 40, 42, 40, 0.4) == (0.0, "revert")  # the leader came back: noise
+    assert grade(30, 40, 30, 35, 0.4) == (0.5, "hit")  # works downward too
+    assert grade(40, 40, 40, 40, 0.4) == (0.0, "miss")
+
+
+def test_wide_books_are_ignored():
+    # same moves as the firing case, but Polymarket's book is 10c wide: its mid is not evidence
+    d = Detector(CFG)
+    out = None
+    for i, k in enumerate([40, 42, 44, 48]):
+        out = d.observe("x", i * 30.0, k, 40.2, k_width=1, p_width=10) or out
+    assert out is None
+    assert d.latest("x", "polymarket") is None
+
+
+def test_tight_books_still_fire():
+    d = Detector(CFG)
+    out = None
+    for i, k in enumerate([40, 42, 44, 48]):
+        out = d.observe("x", i * 30.0, k, 40.2, k_width=1, p_width=2) or out
+    assert out and out.leader == "kalshi"

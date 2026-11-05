@@ -9,8 +9,8 @@ export default function Signals({ items }) {
       </div>
       {items.length === 0 && (
         <p className="muted">
-          Fires when one venue reprices by 2¢+ while the other has not moved, then grades whether the laggard
-          caught up ten minutes later.
+          Fires when one venue reprices by 2¢+ while the other has not moved (tight books only), then grades
+          ten minutes later: did the laggard catch up (hit), or did the leader snap back (revert)?
         </p>
       )}
       <ul className="sig-list">

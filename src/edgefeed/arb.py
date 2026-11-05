@@ -152,6 +152,11 @@ class Opportunity:
     lock_days: Decimal
     resolution_gap_days: Decimal | None
     warnings: list[str] = field(default_factory=list)
+    carry_apr: Decimal = ZERO  # yearly yield the venues pay on the locked legs, as a share of capital
+
+    @property
+    def total_apr(self) -> Decimal:
+        return self.apr + self.carry_apr
 
     @property
     def capital(self) -> Decimal:
@@ -181,6 +186,8 @@ class Opportunity:
             "top_edge_cents": float(self.top_edge * 100),
             "roi": float(self.roi),
             "apr": float(self.apr),
+            "carry_apr": float(self.carry_apr),
+            "total_apr": float(self.total_apr),
             "lock_days": float(self.lock_days),
             "resolution_gap_days": None if self.resolution_gap_days is None else float(self.resolution_gap_days),
             "warnings": list(self.warnings),
@@ -254,6 +261,11 @@ def price_pair(
             resolution_gap_days=gap,
             warnings=warnings,
         )
+        if w.cost + w.fees > 0:
+            cost_a = sum((f.size * f.price for f in w.a), ZERO)
+            cost_b = sum((f.size * f.price for f in w.b), ZERO)
+            held = cost_a * a.apy + cost_b * b.apy
+            opp.carry_apr = held / (w.cost + w.fees)
         if best is None or opp.profit > best.profit:
             best = opp
     return best

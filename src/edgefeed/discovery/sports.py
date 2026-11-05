@@ -19,7 +19,7 @@ from typing import Any
 
 from edgefeed.arb import Relation
 from edgefeed.pairs import Pair
-from edgefeed.venues.kalshi import KalshiClient
+from edgefeed.venues.kalshi import KalshiClient, parse_time
 from edgefeed.venues.polymarket import PolymarketClient, _json_list
 
 MAX_PRICE_GAP = Decimal("0.25")
@@ -144,9 +144,15 @@ def match_two_way(league: League, kev: dict[str, Any], pev: dict[str, Any], slug
                 label=f"{league.name.upper()} {kev.get('title', '')}: {km.get('yes_sub_title') or code}",
                 source="sports",
                 rule_risk=TWO_WAY_RISK,
+                starts_at=game_start(ml, pev),
             )
         )
     return out
+
+
+def game_start(market: dict[str, Any], event: dict[str, Any]) -> datetime | None:
+    """Kick-off / tip-off time. Polymarket has it per market; Kalshi only has an expected end."""
+    return parse_time(market.get("gameStartTime")) or parse_time(event.get("startTime"))
 
 
 def _norm(s: str) -> str:
@@ -179,6 +185,7 @@ def match_three_way(league: League, kev: dict[str, Any], pev: dict[str, Any]) ->
                 label=f"{league.name.upper()} {kev.get('title', '')}: {km.get('yes_sub_title') or code}",
                 source="sports",
                 rule_risk=SOCCER_RISK,
+                starts_at=game_start(pm, pev),
             )
         )
     return out

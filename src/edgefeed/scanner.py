@@ -30,6 +30,7 @@ class Scan:
     started_at: datetime
     seconds: float
     results: list[PairResult] = field(default_factory=list)
+    kind: str = "full"  # full | hot
 
     @property
     def priced(self) -> list[PairResult]:
@@ -47,10 +48,14 @@ class Scanner:
         poly: PolymarketClient,
         *,
         max_contracts: Decimal | None = None,
+        kalshi_apy: Decimal = Decimal(0),
+        poly_holding_apy: Decimal = Decimal(0),
     ) -> None:
         self.kalshi = kalshi
         self.poly = poly
         self.max_contracts = max_contracts
+        self.kalshi_apy = kalshi_apy
+        self.poly_holding_apy = poly_holding_apy
 
     async def scan(self, pairs: list[Pair]) -> Scan:
         """Price every pair. Requests are batched per venue, so cost grows with pairs / 100."""
@@ -85,6 +90,9 @@ class Scanner:
                 r.error = f"polymarket: market {p.polymarket} has no outcome {p.outcome!r}"
             else:
                 r.kalshi, r.poly = kb, self.poly.book_from(pm, ladders)
+                r.kalshi.apy = self.kalshi_apy
+                if pm.holding_rewards:
+                    r.poly.apy = self.poly_holding_apy
                 r.spread = arb.spread(r.kalshi, r.poly, p.relation)
                 r.opportunity = arb.price_pair(
                     p.key, r.kalshi, r.poly, p.relation, now=started, max_contracts=self.max_contracts

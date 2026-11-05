@@ -78,6 +78,17 @@ def meta_from(raw_market: dict[str, Any]) -> KalshiMeta:
     )
 
 
+def result_from(raw_market: dict[str, Any]) -> Decimal | None:
+    m = raw_market.get("market", raw_market)
+    if m.get("status") not in ("settled", "finalized"):
+        return None
+    v = m.get("settlement_value_dollars")
+    if v not in (None, ""):
+        return Decimal(str(v))
+    r = str(m.get("result") or "").lower()
+    return ONE if r == "yes" else Decimal(0) if r == "no" else None
+
+
 class KalshiClient:
     venue = Venue.KALSHI
 
@@ -97,6 +108,10 @@ class KalshiClient:
         m = meta_from(await self.http.get(f"/markets/{ticker}"))
         self._meta[ticker] = (time.monotonic(), m)
         return m
+
+    async def result(self, ticker: str) -> Decimal | None:
+        """What one YES contract settled at (1, 0, or a fair price for a voided game); None while open."""
+        return result_from(await self.http.get(f"/markets/{ticker}"))
 
     async def fee_multiplier(self, series: str) -> Decimal:
         if series not in self._fee_mult:

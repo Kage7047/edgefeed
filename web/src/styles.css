@@ -177,3 +177,27 @@ button.tr:hover { background: rgba(255, 255, 255, 0.03); }
   html:not([data-motion='on']) .pulse.on { animation: none; }
   html:not([data-motion='on']) .bar .fill { transition: none; }
 }
+
+/* v0.3: live games, re-check, paper trades */
+.badge.live { color: #0b0f14; background: var(--pos); animation: live-pulse 1.6s ease-in-out infinite; }
+.badge.soon { color: var(--warn); background: rgba(255, 155, 106, 0.12); }
+@keyframes live-pulse { 50% { opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) { .badge.live { animation: none; } }
+.tag.revert { color: var(--p); background: rgba(197, 139, 255, 0.12); }
+.tag.void { opacity: 0.5; }
+.opp-check { font: 11px var(--mono); margin: 4px 0 0; }
+.opp-check.ok { color: var(--pos); }
+.opp-check.gone { color: var(--warn); }
+.paper-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 0 0 12px; }
+.paper-stats div { background: var(--bg-2); border-radius: 10px; padding: 8px 10px; min-width: 0; }
+.paper-stats dt { font: 10px var(--mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.paper-stats dd { margin: 2px 0 0; font: 600 15px var(--mono); }
+.paper-stats .pos, .paper-list .pos { color: var(--pos); }
+.paper-stats .neg, .paper-list .neg { color: var(--warn); }
+.paper-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.paper-list li { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: baseline; font-size: 13px; }
+@media (max-width: 560px) {
+  .paper-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .paper-list li { grid-template-columns: auto 1fr; }
+  .paper-list li .small { grid-column: 2; }
+}

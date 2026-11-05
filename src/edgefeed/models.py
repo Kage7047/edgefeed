@@ -61,6 +61,7 @@ class Book:
     min_size: Decimal = ONE
     fetched_at: datetime | None = None
     extra: dict[str, str] = field(default_factory=dict)
+    apy: Decimal = ZERO  # yield the venue pays on this position while it is held (interest, rewards)
 
     def ladder(self, side: Side) -> list[Level]:
         return self.yes_asks if side is Side.YES else self.no_asks

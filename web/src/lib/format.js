@@ -30,4 +30,13 @@ export function lockLabel(closesAt) {
   return `${(d / 365).toFixed(1)}y`
 }
 
+/** live: game in play (up to 4h after start) · soon: starts within 20 minutes · null otherwise */
+export function gameState(startsAt) {
+  if (!startsAt) return null
+  const m = (Date.now() - toDate(startsAt)) / 60000
+  if (m >= 0 && m <= 240) return 'live'
+  if (m < 0 && m >= -20) return 'soon'
+  return null
+}
+
 export const time = (iso) => toDate(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })

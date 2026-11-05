@@ -22,18 +22,19 @@ def _cents(x: Decimal | None) -> str:
 
 def print_scan(scan: Scan, top: int) -> None:
     rows = sorted(scan.results, key=lambda r: r.spread if r.spread is not None else Decimal(-9), reverse=True)[:top]
-    print(f"{'edge':>8}  {'size':>7}  {'profit':>9}  {'APR':>8}  {'lock':>6}  pair")
+    print(f"{'edge':>8}  {'size':>7}  {'profit':>9}  {'APR':>8}  {'w/carry':>7}  {'lock':>6}  pair")
     for r in rows:
         name = r.pair.label or r.pair.key
         if r.error:
-            print(f"{'ERR':>8}  {'':>7}  {'':>9}  {'':>8}  {'':>6}  {name}: {r.error[:70]}")
+            print(f"{'ERR':>8}  {'':>7}  {'':>9}  {'':>8}  {'':>7}  {'':>6}  {name}: {r.error[:70]}")
             continue
         o = r.opportunity
         if o is None:
-            print(f"{_cents(r.spread):>8}  {'-':>7}  {'-':>9}  {'-':>8}  {'-':>6}  {name}")
+            print(f"{_cents(r.spread):>8}  {'-':>7}  {'-':>9}  {'-':>8}  {'-':>7}  {'-':>6}  {name}")
             continue
         print(
             f"{_cents(r.spread):>8}  {o.contracts:7.0f}  ${o.profit:8.2f}  {float(o.apr) * 100:7.1f}%  "
+            f"{float(o.total_apr) * 100:6.1f}%  "
             f"{o.lock_days:5.1f}d  {name}"
         )
     print(
@@ -61,7 +62,8 @@ async def cmd_scan(args: argparse.Namespace) -> int:
     k, p = KalshiClient(), PolymarketClient()
     try:
         pairs = await _pairs_for(args, k, p)
-        scan = await Scanner(k, p).scan(pairs)
+        st = Settings()
+        scan = await Scanner(k, p, kalshi_apy=st.kalshi_apy, poly_holding_apy=st.poly_holding_apy).scan(pairs)
     finally:
         await k.aclose()
         await p.aclose()
