@@ -1,6 +1,6 @@
 [project]
 name = "edgefeed"
-version = "0.2.0"
+version = "0.3.0"
 description = "Cross-venue prediction-market edge detection (Kalshi / Polymarket), net of real fees, depth and capital lock-up."
 readme = "README.md"
 license = { text = "MIT" }

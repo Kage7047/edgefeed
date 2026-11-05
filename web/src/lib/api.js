@@ -9,6 +9,7 @@ export const api = {
   pairs: () => get('/api/pairs'),
   series: (key, hours = 6) => get(`/api/pairs/${encodeURIComponent(key)}/series?hours=${hours}`),
   opportunities: () => get('/api/opportunities?limit=60'),
+  paper: () => get('/api/paper?limit=40'),
   signals: () => get('/api/signals?limit=30'),
   events: () => get('/api/events?limit=20'),
   report: () => get('/api/report?days=7'),

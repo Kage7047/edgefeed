@@ -28,3 +28,5 @@ def test_endpoints(store):
     assert c.get("/api/report").json()["verdict"].startswith("TOO EARLY")
     assert c.get("/api/opportunities", params={"status": "bogus"}).status_code == 422
     assert c.get("/metrics").status_code == 200
+    assert c.get("/api/paper").json() == []
+    assert "paper" in c.get("/api/report").json()

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { cents, lockLabel } from '../lib/format'
+import { cents, lockLabel, gameState } from '../lib/format'
 
 const FILTERS = [
   ['all', 'All'],
@@ -70,6 +70,7 @@ export default function Board({ rows, loading, selected, onSelect }) {
             onClick={() => onSelect(selected === r.pair_key ? null : r.pair_key)} aria-pressed={selected === r.pair_key}>
             <span role="cell" className="name">
               <span className={`badge ${r.source}`}>{r.source === 'sports' ? 'game' : 'curated'}</span>
+              {gameState(r.starts_at) && <span className={`badge ${gameState(r.starts_at)}`}>{gameState(r.starts_at)}</span>}
               <span className="label">{r.label ?? r.pair_key}</span>
               {r.rule_risk ? <span className="risk" title={r.rule_risk}>rules differ on edge cases</span> : null}
             </span>

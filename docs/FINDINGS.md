@@ -3,6 +3,30 @@
 Live measurements, newest first. Each entry says what was measured, how, and what it changes.
 Numbers come from the public APIs and the collector's ledger; nothing here is a recommendation.
 
+## 2026-11-05: the first night, and what it changed
+
+**One real-looking game edge, gone within 15 seconds.** During UCL Lens vs Como, Kalshi YES Como
+at 73¢ plus Polymarket NO Como at ~19¢ left 5.9¢ per contract after fees, about $150 at depth
+(and a 1.9¢ edge on the draw). The next scan, 15 seconds later, it was gone. Either a fast bot
+took it, or one venue's book was stale for a moment. *Change:* games in play are now re-scanned
+every 3 seconds, and every new edge is re-fetched at once and paper-traded, so the ledger can say
+which it was.
+
+**Lead-lag signals were 90% noise.** 430 fired, hit rate 4.7%. In 385 of the misses the "laggard"
+never moved at all: a thin book (often an NCAAB game) with a 10–30¢ spread, whose mid jumped while
+the other venue simply did not trade. *Change:* mids only count from books at most 4¢ wide, and the
+grade now tells a laggard catching up (hit) from the leader snapping back (revert).
+
+**Carry is small where the money is.** Polymarket pays 4% a year on flagged long-dated markets
+(e.g. the 2028 nominations). It only helps when the expensive leg sits on Polymarket: Bernie
+Sanders' pair gains 4.0% APR, J.B. Pritzker's 0.1%, because his capital is in a 98¢ Kalshi NO,
+and Kalshi's interest on positions is for US users only. Even with both paid, the 2028 pairs
+would earn about 4% a year: under the 10% bar.
+
+**Settlement data is available.** Both venues expose final results (Kalshi
+`settlement_value_dollars`, Polymarket `outcomePrices` after UMA resolution), checked against
+Heat vs Clippers (Nov 4): both report the Heat side paid 1. Paper trades settle from these.
+
 ## 2026-11-04: first day of the rebuilt engine
 
 **Curated political pairs (21, all 2028 or later).** 19 priced, 9 with a locked edge at full

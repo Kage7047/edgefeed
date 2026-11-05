@@ -82,12 +82,13 @@ def test_rule_change_raises_an_event(store):
 def test_quotes_and_pairs_are_written(store):
     Ledger(store, settings()).apply(scan_at(0, result()))
     with store.tx() as conn:
-        (q,) = store.latest_quotes(conn)
+        (q,) = store.latest_quotes(conn, now=NOW)
     assert q["label"] == "Test pair" and q["k_yes"] == 0.40 and q["spread_cents"] > 0
 
 
 def test_latency_signal_is_recorded_and_graded(store):
-    cfg = LatencyConfig(window=600, move=2, lag=1, gap=2, cooldown=0, followup=60, hit_frac=0.4)
+    # the fixture books are wide on purpose; the width filter has its own test
+    cfg = LatencyConfig(window=600, move=2, lag=1, gap=2, cooldown=0, followup=60, hit_frac=0.4, max_width=100)
     led = Ledger(store, settings(min_profit=D("1e9")), Detector(cfg))
     for i, k_yes in enumerate(["0.40", "0.43", "0.46"]):  # Kalshi climbs, Polymarket flat
         r = result(k_yes=k_yes, p_no="0.62")

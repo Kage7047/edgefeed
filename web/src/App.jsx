@@ -11,6 +11,7 @@ import Board from './components/Board'
 import PairDetail from './components/PairDetail'
 import Opportunities from './components/Opportunities'
 import Signals from './components/Signals'
+import Paper from './components/Paper'
 import Events from './components/Events'
 
 gsap.registerPlugin(useGSAP)
@@ -21,6 +22,7 @@ export default function App() {
   const pairs = usePoll(api.pairs, 5000)
   const opps = usePoll(api.opportunities, 10000)
   const signals = usePoll(api.signals, 15000)
+  const paper = usePoll(api.paper, 10000)
   const events = usePoll(api.events, 60000)
   const report = usePoll(api.report, 30000)
   const [selected, setSelected] = useState(null)
@@ -58,6 +60,7 @@ export default function App() {
           </section>
           <aside className="col-side">
             <Opportunities items={opps.data ?? []} />
+            <Paper items={paper.data ?? []} summary={report.data?.paper} />
             <Signals items={signals.data ?? []} />
             <Events items={events.data ?? []} />
           </aside>
@@ -70,7 +73,8 @@ export default function App() {
         </p>
         <p className="muted">
           Fees: Kalshi round_up(0.07·C·P·(1−P)) per fill × series multiplier · Polymarket C·rate·p·(1−p) per market
-          feeSchedule. APR = profit ÷ capital locked × 365 ÷ days to resolution.
+          feeSchedule. APR = profit ÷ capital locked × 365 ÷ days to resolution, plus any interest or holding
+          rewards the venues pay on the locked legs.
         </p>
       </footer>
     </div>

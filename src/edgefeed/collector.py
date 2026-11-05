@@ -12,9 +12,10 @@ import json
 import logging
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy.engine import Connection
 
@@ -26,6 +27,7 @@ from edgefeed.discovery import sports
 from edgefeed.latency import Detector, grade
 from edgefeed.models import ONE, Book, Side
 from edgefeed.pairs import Pair, fingerprint
+from edgefeed.paper import Paper, format_fill, format_settled
 from edgefeed.scanner import PairResult, Scan, Scanner
 from edgefeed.store import Store, as_utc
 from edgefeed.venues.kalshi import KalshiClient
@@ -43,6 +45,12 @@ def _yes_mid_cents(book: Book) -> float | None:
     return None if m is None else float(m * 100)
 
 
+def _width_cents(book: Book) -> float | None:
+    """How wide the book is: best YES ask + best NO ask - 1, in cents (0 = locked, 1 = one tick)."""
+    y, n = book.best(Side.YES), book.best(Side.NO)
+    return float((y.price + n.price - ONE) * 100) if y and n else None
+
+
 def _poly_yes_mid_cents(book: Book, relation_inverse: bool) -> float | None:
     m = book.mid()
     if m is None:
@@ -53,6 +61,7 @@ def _poly_yes_mid_cents(book: Book, relation_inverse: bool) -> float | None:
 @dataclass(slots=True)
 class Outcome:
     opened: list[int] = field(default_factory=list)
+    opened_results: list[tuple[int, PairResult]] = field(default_factory=list)
     closed: list[int] = field(default_factory=list)
     alerts: list[str] = field(default_factory=list)
     signals: list[int] = field(default_factory=list)
@@ -64,6 +73,10 @@ class Ledger:
         self.store = store
         self.s = settings
         self.detector = detector or Detector()
+        # quotes are written when they change, plus a heartbeat, so a 3-second hot loop
+        # does not write a row per pair per tick
+        self._last_quote: dict[str, tuple[tuple[float | None, ...], float]] = {}
+        self.quote_heartbeat = 300.0
 
     def qualifies(self, r: PairResult) -> bool:
         o = r.opportunity
@@ -71,7 +84,7 @@ class Ledger:
 
     def alertable(self, r: PairResult) -> bool:
         o = r.opportunity
-        return bool(o and o.apr >= self.s.alert_min_apr and o.profit >= self.s.alert_min_profit)
+        return bool(o and o.total_apr >= self.s.alert_min_apr and o.profit >= self.s.alert_min_profit)
 
     def apply(self, scan: Scan, *, clock: float | None = None) -> Outcome:
         out = Outcome()
@@ -80,7 +93,14 @@ class Ledger:
         with self.store.tx() as conn:
             winners = [r for r in scan.results if self.qualifies(r)]
             scan_id = self.store.record_scan(
-                conn, now, scan.seconds, len(scan.results), len(scan.priced), len(scan.failed), len(winners)
+                conn,
+                now,
+                scan.seconds,
+                len(scan.results),
+                len(scan.priced),
+                len(scan.failed),
+                len(winners),
+                scan.kind,
             )
             quote_rows = []
             for r in scan.results:
@@ -100,6 +120,7 @@ class Ledger:
                         "source": p.source,
                         "rule_risk": p.rule_risk,
                         "closes_at": closes,
+                        "starts_at": p.starts_at,
                     },
                     now,
                 )
@@ -107,20 +128,29 @@ class Ledger:
                     continue
                 inverse = p.relation.value == "inverse"
                 k_mid, p_mid = _yes_mid_cents(r.kalshi), _poly_yes_mid_cents(r.poly, inverse)
-                quote_rows.append(
-                    {
-                        "scan_id": scan_id,
-                        "ts": now,
-                        "pair_key": p.key,
-                        "spread_cents": None if r.spread is None else float(r.spread * 100),
-                        "k_yes": _f(b.price) if (b := r.kalshi.best(Side.YES)) else None,
-                        "k_no": _f(b.price) if (b := r.kalshi.best(Side.NO)) else None,
-                        "p_yes": _f(b.price) if (b := r.poly.best(Side.YES)) else None,
-                        "p_no": _f(b.price) if (b := r.poly.best(Side.NO)) else None,
-                        "k_mid": k_mid,
-                        "p_mid": p_mid,
-                    }
+                q: dict[str, Any] = {
+                    "scan_id": scan_id,
+                    "ts": now,
+                    "pair_key": p.key,
+                    "spread_cents": None if r.spread is None else float(r.spread * 100),
+                    "k_yes": _f(b.price) if (b := r.kalshi.best(Side.YES)) else None,
+                    "k_no": _f(b.price) if (b := r.kalshi.best(Side.NO)) else None,
+                    "p_yes": _f(b.price) if (b := r.poly.best(Side.YES)) else None,
+                    "p_no": _f(b.price) if (b := r.poly.best(Side.NO)) else None,
+                    "k_mid": k_mid,
+                    "p_mid": p_mid,
+                }
+                sig_vals: tuple[float | None, ...] = (
+                    q["spread_cents"],
+                    q["k_yes"],
+                    q["k_no"],
+                    q["p_yes"],
+                    q["p_no"],
                 )
+                last = self._last_quote.get(p.key)
+                if last is None or last[0] != sig_vals or ts - last[1] >= self.quote_heartbeat:
+                    quote_rows.append(q)
+                    self._last_quote[p.key] = (sig_vals, ts)
                 if r.spread is not None:
                     metrics.best_edge_cents.labels(p.key).set(float(r.spread * 100))
                 for book in (r.kalshi, r.poly):
@@ -132,7 +162,7 @@ class Ledger:
                             self.store.add_event(conn, "rules_changed", market, msg, now)
                             out.rule_changes.append(market)
                             out.alerts.append(f"RULES CHANGED\n{msg}")
-                sig = self.detector.observe(p.key, ts, k_mid, p_mid)
+                sig = self.detector.observe(p.key, ts, k_mid, p_mid, _width_cents(r.kalshi), _width_cents(r.poly))
                 if sig:
                     sid = self.store.add_signal(
                         conn,
@@ -177,6 +207,7 @@ class Ledger:
                             "best_profit": float(o.profit),
                             "best_contracts": float(o.contracts),
                             "best_apr": float(o.apr),
+                            "best_total_apr": float(o.total_apr),
                             "best_snapshot": json.dumps(snap),
                         }
                     self.store.touch_opportunity(conn, opp_id, now, better)
@@ -197,19 +228,23 @@ class Ledger:
                             "best_profit": float(o.profit),
                             "best_contracts": float(o.contracts),
                             "best_apr": float(o.apr),
+                            "best_total_apr": float(o.total_apr),
                             "lock_days": float(o.lock_days),
                             "warnings": json.dumps(o.warnings),
                             "best_snapshot": json.dumps(snap),
                         },
                     )
                     out.opened.append(opp_id)
+                    out.opened_results.append((opp_id, r))
                     metrics.opportunities_opened.labels("cross").inc()
                     if self.alertable(r):
                         out.alerts.append(format_opportunity(snap, r.pair.label or key))
             failed = {r.pair.key for r in scan.failed}
+            scanned = {r.pair.key for r in scan.results}
             for key, (opp_id, _) in open_now.items():
-                # a pair that failed to fetch this round is unknown, not closed
-                if key not in seen and key not in failed:
+                # a pair this scan did not cover (hot scans cover a few) or failed to fetch is
+                # unknown, not closed
+                if key in scanned and key not in seen and key not in failed:
                     self.store.close_opportunity(conn, opp_id, now)
                     out.closed.append(opp_id)
             metrics.open_opportunities.labels("cross").set(len(open_now) - len(out.closed) + len(out.opened))
@@ -221,15 +256,20 @@ class Ledger:
             if fired is None or (now - fired).total_seconds() < self.detector.cfg.followup:
                 continue
             lag_now = self.detector.latest(sig["pair_key"], sig["laggard"])
+            lead_now = self.detector.latest(sig["pair_key"], sig["leader"])
             if lag_now is None:
+                if (now - fired).total_seconds() > 4 * self.detector.cfg.followup:
+                    # the book went wide or the pair dropped out: no honest grade is possible
+                    self.store.grade_signal(conn, sig["id"], {"graded_at": now, "outcome": "void"})
                 continue
-            frac, outcome = grade(sig["leader_mid"], sig["laggard_mid"], lag_now, self.detector.cfg.hit_frac)
+            frac, outcome = grade(sig["leader_mid"], sig["laggard_mid"], lead_now, lag_now, self.detector.cfg.hit_frac)
             self.store.grade_signal(
                 conn,
                 sig["id"],
                 {
                     "graded_at": now,
                     "laggard_mid_after": lag_now,
+                    "leader_mid_after": lead_now,
                     "convergence": frac,
                     "outcome": outcome,
                 },
@@ -237,19 +277,31 @@ class Ledger:
 
 
 class Collector:
+    """Full scans every ``interval`` seconds; in between, a fast "hot" scan of the pairs that matter
+    right now (games in play or about to start, and pairs with an open edge)."""
+
     def __init__(self, settings: Settings | None = None) -> None:
         self.s = settings or Settings()
         self.store = Store(self.s.db_url)
         self.kalshi = KalshiClient()
         self.poly = PolymarketClient()
-        self.scanner = Scanner(self.kalshi, self.poly, max_contracts=self.s.max_contracts)
+        self.scanner = Scanner(
+            self.kalshi,
+            self.poly,
+            max_contracts=self.s.max_contracts,
+            kalshi_apy=self.s.kalshi_apy,
+            poly_holding_apy=self.s.poly_holding_apy,
+        )
         self.ledger = Ledger(self.store, self.s)
+        self.paper = Paper(self.store, self.scanner, self.kalshi, self.poly, self.s)
         self.notify: Notifier = notifier(self.s.telegram_token, self.s.telegram_chat)
         self._curated: list[Pair] = []
         self._curated_mtime = 0.0
         self._sports: list[Pair] = []
         self._last_discovery = 0.0
         self._last_prune = 0.0
+        self._last_full = -1e18
+        self._last_settle = 0.0
 
     def curated(self) -> list[Pair]:
         path = Path(self.s.pairs_file)
@@ -276,34 +328,76 @@ class Collector:
         self._sports = found
         log.info("sports discovery: %s", ", ".join(f"{c.league} {c.matched_games}/{c.kalshi_games}" for c in cov))
 
-    async def tick(self) -> Outcome:
-        await self.refresh_sports()
+    def hot(self, pairs: list[Pair], now: datetime | None = None) -> list[Pair]:
+        """Pairs worth a fast re-scan: games from shortly before start until a few hours in,
+        plus anything with an edge open right now."""
+        now = now or datetime.now(UTC)
+        before = timedelta(minutes=self.s.hot_before_minutes)
+        after = timedelta(hours=self.s.hot_after_hours)
+        with self.store.tx() as conn:
+            open_keys = set(self.store.open_ids(conn))
+        return [
+            p
+            for p in pairs
+            if p.key in open_keys or (p.starts_at is not None and p.starts_at - before <= now <= p.starts_at + after)
+        ]
+
+    async def tick(self, *, kind: str = "full") -> Outcome:
+        if kind == "full":
+            await self.refresh_sports()
         pairs = self.curated() + self._sports
+        if kind == "hot":
+            pairs = self.hot(pairs)
+            if not pairs:
+                return Outcome()
         t0 = time.perf_counter()
         scan = await self.scanner.scan(pairs)
+        scan.kind = kind
         metrics.scan_seconds.observe(time.perf_counter() - t0)
-        metrics.pairs_priced.set(len(scan.priced))
-        metrics.pairs_failed.set(len(scan.failed))
+        if kind == "full":
+            metrics.pairs_priced.set(len(scan.priced))
+            metrics.pairs_failed.set(len(scan.failed))
         out = self.ledger.apply(scan)
         metrics.scans.labels("ok").inc()
         metrics.last_scan_ts.set(time.time())
-        for text in out.alerts:
+        alerts = list(out.alerts)
+        if self.s.paper:
+            for opp_id, r in out.opened_results:
+                try:
+                    row = await self.paper.take(opp_id, r)
+                except Exception:
+                    log.exception("paper take failed for %s", r.pair.key)
+                    continue
+                if row:
+                    log.info("paper %s %s", row["status"], row["label"])
+                    alerts.append(format_fill(row))
+        for text in alerts:
             await self.notify.send(text)
-        if time.monotonic() - self._last_prune > 3600:
+        if kind == "full" and time.monotonic() - self._last_prune > 3600:
             self._last_prune = time.monotonic()
             with self.store.tx() as conn:
                 self.store.prune_quotes(conn, self.s.keep_quotes_days)
-        log.info(
-            "scan: %d pairs, %d priced, %d failed, %d opened, %d closed, %d signals, %.1fs",
-            len(scan.results),
-            len(scan.priced),
-            len(scan.failed),
-            len(out.opened),
-            len(out.closed),
-            len(out.signals),
-            scan.seconds,
-        )
+        if kind == "full" or out.opened or out.closed:
+            log.info(
+                "%s scan: %d pairs, %d priced, %d failed, %d opened, %d closed, %d signals, %.1fs",
+                kind,
+                len(scan.results),
+                len(scan.priced),
+                len(scan.failed),
+                len(out.opened),
+                len(out.closed),
+                len(out.signals),
+                scan.seconds,
+            )
         return out
+
+    async def settle(self) -> None:
+        if not self.s.paper or time.monotonic() - self._last_settle < self.s.settle_every:
+            return
+        self._last_settle = time.monotonic()
+        for row in await self.paper.settle():
+            log.info("paper settled %s pnl %.2f", row["label"], row["pnl"])
+            await self.notify.send(format_settled(row))
 
     async def run(self, *, once: bool = False, stop: asyncio.Event | None = None) -> None:
         stop = stop or asyncio.Event()
@@ -312,17 +406,22 @@ class Collector:
 
             start_http_server(self.s.metrics_port)
             log.info("metrics on :%d/metrics", self.s.metrics_port)
+        step = max(0.5, min(self.s.hot_interval, self.s.interval))
         try:
             while not stop.is_set():
                 started = time.monotonic()
+                kind = "full" if once or started - self._last_full >= self.s.interval else "hot"
+                if kind == "full":
+                    self._last_full = started
                 try:
-                    await self.tick()
+                    await self.tick(kind=kind)
+                    await self.settle()
                 except Exception:
                     metrics.scans.labels("error").inc()
-                    log.exception("scan failed")
+                    log.exception("%s scan failed", kind)
                 if once:
                     return
-                delay = max(1.0, self.s.interval - (time.monotonic() - started))
+                delay = max(0.2, step - (time.monotonic() - started))
                 with contextlib.suppress(TimeoutError):
                     await asyncio.wait_for(stop.wait(), timeout=delay)
         finally:

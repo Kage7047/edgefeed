@@ -25,14 +25,23 @@ export default function Opportunities({ items }) {
       )}
       <ul className="opp-list">
         {[...open, ...recent].map((o) => {
-          const worth = o.best_apr >= 0.1 && o.best_profit >= 5
+          const apr = o.best_total_apr ?? o.best_apr
+          const worth = apr >= 0.1 && o.best_profit >= 5
+          const carry = apr - o.best_apr
           return (
             <li key={o.id} className={`opp ${o.closed_at ? 'closed' : 'live'} ${worth ? 'worth' : ''}`}>
               <div className="opp-top">
                 <span className="opp-edge">{cents(o.best_cents)}</span>
                 <span className="opp-profit">{usd(o.best_profit)}</span>
-                <span className={`opp-apr ${worth ? 'pos' : ''}`}>{pct(o.best_apr)} APR</span>
+                <span className={`opp-apr ${worth ? 'pos' : ''}`} title={carry > 0.0005 ? `incl. ${pct(carry)} carry` : undefined}>
+                  {pct(apr)} APR
+                </span>
               </div>
+              {o.confirmed != null && (
+                <p className={`opp-check ${o.confirmed ? 'ok' : 'gone'}`}>
+                  {o.confirmed ? 'held on re-check' : 'gone on re-check'} · {Math.round(o.confirm_ms)} ms
+                </p>
+              )}
               <p className="opp-label">{o.label}</p>
               <ul className="legs">{(o.best_snapshot?.legs ?? []).map((l) => <Leg key={l.venue} leg={l} />)}</ul>
               <p className="opp-meta">

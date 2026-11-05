@@ -2,9 +2,16 @@
 
 For every pair we keep a rolling window of both venues' YES mids. A signal fires when one venue
 moved at least ``move`` cents over the window while the other moved at most ``lag`` cents and
-they now disagree by at least ``gap`` cents. After ``followup`` seconds the signal is graded: did
-the laggard close at least ``hit_frac`` of the gap? The hit rate is the calibration bar for the
-whole idea; until it is measured, signals are research output, not advice.
+they now disagree by at least ``gap`` cents. After ``followup`` seconds the signal is graded:
+
+- hit: the laggard moved at least ``hit_frac`` of the gap toward where the leader was;
+- revert: the leader came back instead (it was noise, not news);
+- partial / miss: some or no convergence by the laggard.
+
+A mid is only trusted when that book is tight (YES ask + NO ask - 1 <= ``max_width`` cents). The
+first night of data showed why: 90% of signals were a wide, thin book whose mid jumped while the
+other venue simply never traded. The hit rate is the calibration bar for the whole idea; until it
+is measured, signals are research output, not advice.
 """
 
 from __future__ import annotations
@@ -22,6 +29,7 @@ class LatencyConfig:
     cooldown: float = 180.0
     followup: float = 600.0
     hit_frac: float = 0.4
+    max_width: float = 4.0  # cents; wider books are ignored (their mid is noise)
 
 
 @dataclass(slots=True)
@@ -72,11 +80,19 @@ def detect(key: str, t: PairTracks, cfg: LatencyConfig) -> Signal | None:
     return None
 
 
-def grade(leader_mid: float, laggard_mid0: float, laggard_now: float, hit_frac: float) -> tuple[float, str]:
-    """Fraction of the original gap the laggard closed, and hit / partial / miss."""
-    gap0 = abs(laggard_mid0 - leader_mid)
-    frac = (gap0 - abs(laggard_now - leader_mid)) / gap0 if gap0 > 0 else 0.0
-    return round(frac, 3), ("hit" if frac >= hit_frac else "partial" if frac > 0 else "miss")
+def grade(
+    leader_mid0: float, laggard_mid0: float, leader_now: float | None, laggard_now: float, hit_frac: float
+) -> tuple[float, str]:
+    """Share of the original gap the laggard closed toward the leader, and the outcome."""
+    gap0 = leader_mid0 - laggard_mid0
+    if gap0 == 0:
+        return 0.0, "miss"
+    frac = (laggard_now - laggard_mid0) / gap0
+    if frac >= hit_frac:
+        return round(frac, 3), "hit"
+    if leader_now is not None and (leader_mid0 - leader_now) / gap0 >= hit_frac:
+        return round(frac, 3), "revert"
+    return round(frac, 3), ("partial" if frac > 0 else "miss")
 
 
 class Detector:
@@ -84,8 +100,23 @@ class Detector:
         self.cfg = cfg or LatencyConfig()
         self.tracks: dict[str, PairTracks] = {}
 
-    def observe(self, key: str, ts: float, k_mid: float | None, p_mid: float | None) -> Signal | None:
+    def observe(
+        self,
+        key: str,
+        ts: float,
+        k_mid: float | None,
+        p_mid: float | None,
+        k_width: float | None = None,
+        p_width: float | None = None,
+    ) -> Signal | None:
         t = self.tracks.setdefault(key, PairTracks())
+        # a wide book has no trustworthy mid: forget its history rather than compare against it
+        if k_width is not None and k_width > self.cfg.max_width:
+            t.kalshi.hist.clear()
+            k_mid = None
+        if p_width is not None and p_width > self.cfg.max_width:
+            t.poly.hist.clear()
+            p_mid = None
         t.kalshi.push(ts, k_mid, self.cfg.window)
         t.poly.push(ts, p_mid, self.cfg.window)
         sig = detect(key, t, self.cfg)

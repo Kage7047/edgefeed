@@ -50,6 +50,7 @@ class PolyMeta:
     neg_risk: bool
     active: bool
     category: str
+    holding_rewards: bool = False
 
 
 def meta_from(m: dict[str, Any], outcome: str = "Yes") -> PolyMeta | None:
@@ -82,7 +83,22 @@ def meta_from(m: dict[str, Any], outcome: str = "Yes") -> PolyMeta | None:
         neg_risk=bool(m.get("negRisk")),
         active=bool(m.get("active")) and not bool(m.get("closed")),
         category=category,
+        holding_rewards=bool(m.get("holdingRewardsEnabled")),
     )
+
+
+def result_from(m: dict[str, Any], outcome: str = "Yes") -> Decimal | None:
+    """What one share of ``outcome`` paid out, once the market is resolved; None while it is open."""
+    if not m.get("closed") or str(m.get("umaResolutionStatus") or "").lower() != "resolved":
+        return None
+    outcomes = [str(o).strip().lower() for o in _json_list(m.get("outcomes"))]
+    prices = _json_list(m.get("outcomePrices"))
+    if outcome.strip().lower() not in outcomes or len(prices) != len(outcomes):
+        return None
+    try:
+        return Decimal(str(prices[outcomes.index(outcome.strip().lower())]))
+    except ArithmeticError:
+        return None
 
 
 def ladder_from(raw_book: dict[str, Any]) -> list[Level]:
@@ -160,8 +176,17 @@ class PolymarketClient:
             rules=m.rules,
             min_size=m.min_size,
             fetched_at=datetime.now(UTC),
-            extra={"yes_token": m.yes_token, "neg_risk": str(m.neg_risk).lower(), "category": m.category},
+            extra={
+                "yes_token": m.yes_token,
+                "neg_risk": str(m.neg_risk).lower(),
+                "category": m.category,
+                "holding_rewards": str(m.holding_rewards).lower(),
+            },
         )
+
+    async def result(self, market_id: str, outcome: str = "Yes") -> Decimal | None:
+        raw = await self.gamma.get(f"/markets/{market_id}")
+        return result_from(raw[0] if isinstance(raw, list) else raw, outcome)
 
     async def book(self, market_id: str, outcome: str = "Yes") -> Book:
         m = await self.meta(market_id, outcome)

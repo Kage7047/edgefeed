@@ -30,7 +30,9 @@ from sqlalchemy import (
     event,
     func,
     insert,
+    inspect,
     select,
+    text,
     update,
 )
 from sqlalchemy.engine import Connection
@@ -52,6 +54,7 @@ scans = Table(
     Column("priced", Integer, nullable=False),
     Column("failed", Integer, nullable=False),
     Column("opportunities", Integer, nullable=False),
+    Column("kind", String(8)),  # full | hot
 )
 
 pairs = Table(
@@ -66,6 +69,7 @@ pairs = Table(
     Column("source", String(16), nullable=False),
     Column("rule_risk", Text, nullable=False, default=""),
     Column("closes_at", DateTime(timezone=True)),
+    Column("starts_at", DateTime(timezone=True)),
     Column("first_seen", DateTime(timezone=True), nullable=False),
     Column("last_seen", DateTime(timezone=True), nullable=False),
 )
@@ -108,6 +112,11 @@ opportunities = Table(
     Column("lock_days", Float, nullable=False),
     Column("warnings", Text, nullable=False, default="[]"),
     Column("best_snapshot", Text, nullable=False),
+    Column("best_total_apr", Float),  # trading APR + carry (interest / holding rewards)
+    # re-check right after opening: was the edge still there on fresh books?
+    Column("confirmed", Integer),
+    Column("confirm_cents", Float),
+    Column("confirm_ms", Float),
 )
 
 signals = Table(
@@ -126,6 +135,7 @@ signals = Table(
     Column("laggard_mid", Float, nullable=False),
     Column("graded_at", DateTime(timezone=True)),
     Column("laggard_mid_after", Float),
+    Column("leader_mid_after", Float),
     Column("convergence", Float),
     Column("outcome", String(16)),
 )
@@ -138,6 +148,31 @@ rules = Table(
     Column("text", Text, nullable=False),
     Column("first_seen", DateTime(timezone=True), nullable=False),
     Column("last_seen", DateTime(timezone=True), nullable=False),
+)
+
+paper_trades = Table(
+    "paper_trades",
+    meta,
+    Column("id", Integer, primary_key=True),
+    Column("opportunity_id", Integer, index=True),
+    Column("pair_key", String(200), nullable=False, index=True),
+    Column("label", String(300), nullable=False),
+    Column("source", String(16), nullable=False),
+    Column("outcome", String(100), nullable=False),  # the Polymarket outcome that plays YES
+    Column("status", String(16), nullable=False, index=True),  # open | settled | missed
+    Column("opened_at", DateTime(timezone=True), nullable=False, index=True),
+    Column("latency_ms", Float, nullable=False),
+    Column("seen_cents", Float, nullable=False),  # edge per contract when the scan saw it
+    Column("fill_cents", Float),  # edge per contract on the re-fetched books (None: gone)
+    Column("contracts", Float, nullable=False, default=0),
+    Column("cost", Float, nullable=False, default=0),
+    Column("fees", Float, nullable=False, default=0),
+    Column("expected_profit", Float, nullable=False, default=0),
+    Column("legs", Text, nullable=False, default="[]"),
+    Column("settled_at", DateTime(timezone=True)),
+    Column("payout", Float),
+    Column("pnl", Float),
+    Column("note", Text, nullable=False, default=""),
 )
 
 events = Table(
@@ -172,6 +207,27 @@ class Store:
         if self.engine.dialect.name == "sqlite":
             event.listen(self.engine, "connect", _sqlite_pragmas)
         meta.create_all(self.engine)
+        self.migrate()
+
+    def migrate(self) -> list[str]:
+        """Add columns that newer versions define but an existing database lacks.
+
+        Only nullable additions are automatic; anything else would need a real migration.
+        """
+        insp = inspect(self.engine)
+        added: list[str] = []
+        with self.engine.begin() as conn:
+            for table in meta.sorted_tables:
+                have = {c["name"] for c in insp.get_columns(table.name)}
+                for col in table.columns:
+                    if col.name in have:
+                        continue
+                    if not col.nullable:
+                        raise RuntimeError(f"{table.name}.{col.name} is missing and not nullable; migrate by hand")
+                    ddl = col.type.compile(dialect=self.engine.dialect)
+                    conn.execute(text(f'ALTER TABLE {table.name} ADD COLUMN "{col.name}" {ddl}'))
+                    added.append(f"{table.name}.{col.name}")
+        return added
 
     @contextmanager
     def tx(self) -> Iterator[Connection]:
@@ -189,6 +245,7 @@ class Store:
         priced: int,
         failed: int,
         opps: int,
+        kind: str = "full",
     ) -> int:
         res = conn.execute(
             insert(scans).values(
@@ -198,6 +255,7 @@ class Store:
                 priced=priced,
                 failed=failed,
                 opportunities=opps,
+                kind=kind,
             )
         )
         return int(res.inserted_primary_key[0])  # type: ignore[index]
@@ -227,6 +285,24 @@ class Store:
 
     def close_opportunity(self, conn: Connection, opp_id: int, closed_at: datetime) -> None:
         conn.execute(update(opportunities).where(opportunities.c.id == opp_id).values(closed_at=closed_at))
+
+    def confirm_opportunity(self, conn: Connection, opp_id: int, ok: bool, cents: float | None, ms: float) -> None:
+        conn.execute(
+            update(opportunities)
+            .where(opportunities.c.id == opp_id)
+            .values(confirmed=int(ok), confirm_cents=cents, confirm_ms=ms)
+        )
+
+    def add_paper(self, conn: Connection, row: dict[str, Any]) -> int:
+        res = conn.execute(insert(paper_trades).values(**row))
+        return int(res.inserted_primary_key[0])  # type: ignore[index]
+
+    def open_papers(self, conn: Connection) -> list[dict[str, Any]]:
+        rows = conn.execute(select(paper_trades).where(paper_trades.c.status == "open"))
+        return [{**dict(r._mapping), "legs": json.loads(r.legs or "[]")} for r in rows]
+
+    def settle_paper(self, conn: Connection, trade_id: int, values: dict[str, Any]) -> None:
+        conn.execute(update(paper_trades).where(paper_trades.c.id == trade_id).values(status="settled", **values))
 
     def open_ids(self, conn: Connection) -> dict[str, tuple[int, float]]:
         rows = conn.execute(
@@ -291,17 +367,40 @@ class Store:
             out.append(d)
         return out
 
-    def latest_quotes(self, conn: Connection) -> list[dict[str, Any]]:
-        last = conn.execute(select(func.max(scans.c.id))).scalar()
-        if last is None:
-            return []
+    def latest_quotes(
+        self, conn: Connection, *, within: timedelta = timedelta(minutes=15), now: datetime | None = None
+    ) -> list[dict[str, Any]]:
+        """The newest quote of every pair seen recently (quotes are only written when they change)."""
+        since = (now or datetime.now(UTC)) - within
+        newest = (
+            select(func.max(quotes.c.id).label("id")).where(quotes.c.ts >= since).group_by(quotes.c.pair_key).subquery()
+        )
         q = (
-            select(quotes, pairs.c.label, pairs.c.source, pairs.c.closes_at, pairs.c.rule_risk)
+            select(quotes, pairs.c.label, pairs.c.source, pairs.c.closes_at, pairs.c.starts_at, pairs.c.rule_risk)
+            .join(newest, newest.c.id == quotes.c.id)
             .join(pairs, pairs.c.key == quotes.c.pair_key, isouter=True)
-            .where(quotes.c.scan_id == last)
             .order_by(quotes.c.spread_cents.desc())
         )
-        return [dict(r._mapping) for r in conn.execute(q)]
+        out = []
+        for r in conn.execute(q):
+            d = dict(r._mapping)
+            for k in ("ts", "closes_at", "starts_at"):
+                d[k] = as_utc(d[k])
+            out.append(d)
+        return out
+
+    def paper(self, conn: Connection, *, limit: int = 200, since: datetime | None = None) -> list[dict[str, Any]]:
+        q = select(paper_trades).order_by(paper_trades.c.opened_at.desc()).limit(limit)
+        if since:
+            q = q.where(paper_trades.c.opened_at >= since)
+        out = []
+        for r in conn.execute(q):
+            d = dict(r._mapping)
+            for k in ("opened_at", "settled_at"):
+                d[k] = as_utc(d[k])
+            d["legs"] = json.loads(d["legs"] or "[]")
+            out.append(d)
+        return out
 
     def series(self, conn: Connection, pair_key: str, since: datetime) -> list[dict[str, Any]]:
         q = (

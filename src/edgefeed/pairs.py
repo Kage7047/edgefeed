@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import re
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +24,7 @@ class Pair:
     outcome: str = "Yes"  # the Polymarket outcome that plays YES (a team name on moneylines)
     source: str = "curated"  # curated | sports
     rule_risk: str = ""  # known settlement differences between the two rule texts
+    starts_at: datetime | None = None  # game start (sports pairs): drives the fast "hot" scan
 
     @property
     def key(self) -> str:
