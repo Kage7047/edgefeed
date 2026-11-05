@@ -31,5 +31,5 @@ def test_ledger_on_postgres(pg):
     with pg.tx() as conn:
         (row,) = pg.opportunities(conn)
         assert row["closed_at"].tzinfo is not None and row["scans_seen"] == 2
-        assert pg.latest_quotes(conn)
+        assert pg.latest_quotes(conn, now=NOW)
     assert build(pg, now=NOW)["opportunities"]["total"] == 1
