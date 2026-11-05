@@ -35,6 +35,17 @@ def _pct(xs: list[float], q: float) -> float | None:
     return xs[min(len(xs) - 1, int(q * (len(xs) - 1) + 0.5))]
 
 
+def _kinds(rows: Any) -> dict[str, dict[str, float]]:
+    out: dict[str, dict[str, float]] = {}
+    for kind, n, avg in rows:
+        k = kind or "full"
+        prev = out.get(k, {"scans": 0, "avg_seconds": 0.0})
+        total = prev["scans"] + n
+        mean = (prev["avg_seconds"] * prev["scans"] + float(avg or 0) * n) / total if total else 0.0
+        out[k] = {"scans": total, "avg_seconds": round(mean, 2)}
+    return out
+
+
 def build(store: Store, days: int = 7, now: datetime | None = None) -> dict[str, Any]:
     now = now or datetime.now(UTC)
     since = now - timedelta(days=days)
@@ -49,10 +60,12 @@ def build(store: Store, days: int = 7, now: datetime | None = None) -> dict[str,
         ).one()
         opps = store.opportunities(conn, since=since, limit=100_000)
         sig_rows = [dict(r._mapping) for r in conn.execute(select(signals).where(signals.c.ts >= since))]
+        # grouped on the raw column: Postgres treats two bound COALESCE defaults as different
+        # expressions; v0.2 rows (kind NULL) are full scans
         kinds = conn.execute(
-            select(func.coalesce(scans.c.kind, "full"), func.count(), func.avg(scans.c.seconds))
+            select(scans.c.kind, func.count(), func.avg(scans.c.seconds))
             .where(scans.c.started_at >= since)
-            .group_by(func.coalesce(scans.c.kind, "full"))
+            .group_by(scans.c.kind)
         ).all()
         papers = store.paper(conn, since=since, limit=100_000)
 
@@ -118,7 +131,7 @@ def build(store: Store, days: int = 7, now: datetime | None = None) -> dict[str,
         "observed_days": round(observed_days, 2),
         "scans": n_scans,
         "avg_scan_seconds": round(float(avg_s or 0), 2),
-        "scan_kinds": {k: {"scans": n, "avg_seconds": round(float(a or 0), 2)} for k, n, a in kinds},
+        "scan_kinds": _kinds(kinds),
         "opportunities": {
             "total": len(opps),
             "open_now": sum(1 for o in opps if o["closed_at"] is None),
