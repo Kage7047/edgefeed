@@ -298,10 +298,12 @@ class Collector:
         self._curated: list[Pair] = []
         self._curated_mtime = 0.0
         self._sports: list[Pair] = []
-        self._last_discovery = 0.0
-        self._last_prune = 0.0
+        # time.monotonic() starts near zero at boot and stops while the machine sleeps, so 0.0 would
+        # hold off the first discovery (and prune/settle) for a whole period after a reboot
+        self._last_discovery = -1e18
+        self._last_prune = -1e18
         self._last_full = -1e18
-        self._last_settle = 0.0
+        self._last_settle = -1e18
 
     def curated(self) -> list[Pair]:
         path = Path(self.s.pairs_file)
