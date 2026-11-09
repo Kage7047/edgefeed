@@ -105,8 +105,3 @@ pairs:
     relation: same
     label: "Itamar Ben-Gvir next Israeli PM"
     verified: 2026-09-20
-  - kalshi: KXNEXTROMANIAPM-45JAN01-ETOM
-    polymarket: "2166699"
-    relation: same
-    label: "Eugen Tomac next Romania PM (lower liquidity)"
-    verified: 2026-09-20
